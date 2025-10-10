@@ -467,6 +467,38 @@ export default function AuctionStartPage() {
     }
   }
 
+  const exportPlayersToCSV = () => {
+    // Create CSV header
+    const headers = ["Name", "Tier", "Description", "Position"]
+    
+    // Create CSV data rows
+    const csvData = players.map(player => [
+      player.name,
+      player.tier,
+      player.description,
+      player.position
+    ])
+    
+    // Combine headers and data
+    const allData = [headers, ...csvData]
+    
+    // Convert to CSV string
+    const csvContent = allData.map(row => 
+      row.map(field => `"${field}"`).join(",")
+    ).join("\n")
+    
+    // Create and download file
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
+    const link = document.createElement("a")
+    const url = URL.createObjectURL(blob)
+    link.setAttribute("href", url)
+    link.setAttribute("download", "players_data.csv")
+    link.style.visibility = "hidden"
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   const drawRandomPlayer = () => {
     if (availablePlayers.length === 0) {
       if (unsoldPlayers.length === 0) {
@@ -762,14 +794,30 @@ export default function AuctionStartPage() {
                     <div className="flex flex-col items-center justify-center h-full space-y-3">
                       <div className="text-muted-foreground text-sm mb-2">관리자 제어</div>
                       {auctionState.isActive ? (
-                        <button
-                          onClick={endAuction}
-                          className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium"
-                        >
-                          🏁 경매 종료
-                        </button>
+                        <>
+                          <button
+                            onClick={endAuction}
+                            className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium"
+                          >
+                            🏁 경매 종료
+                          </button>
+                          <button
+                            onClick={exportPlayersToCSV}
+                            className="w-full py-2 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+                          >
+                            📊 CSV 다운로드
+                          </button>
+                        </>
                       ) : (
-                        <div className="text-foreground text-xs">입찰 모니터링 중...</div>
+                        <>
+                          <button
+                            onClick={exportPlayersToCSV}
+                            className="w-full py-2 px-4 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors text-sm font-medium"
+                          >
+                            📊 CSV 다운로드
+                          </button>
+                          <div className="text-foreground text-xs">입찰 모니터링 중...</div>
+                        </>
                       )}
                     </div>
                   ) : auctionState.isActive ? (
