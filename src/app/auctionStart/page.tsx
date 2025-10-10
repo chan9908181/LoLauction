@@ -445,6 +445,28 @@ export default function AuctionStartPage() {
     }
   }
 
+  const endAuction = () => {
+    if (!isAdmin || !auctionState.isActive) {
+      alert("활성화된 경매가 없거나 관리자가 아닙니다!")
+      return
+    }
+
+    const confirmation = confirm(
+      `현재 경매를 종료하시겠습니까?\n\n선수: ${auctionState.currentPlayer?.name}\n현재 최고가: $${auctionState.currentBid}\n최고 입찰자: ${auctionState.highestBidder || "없음"}`
+    )
+
+    if (!confirmation) return
+
+    if (wsRef.current) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: "end_auction",
+          playerId: auctionState.currentPlayer?._id,
+        })
+      )
+    }
+  }
+
   const drawRandomPlayer = () => {
     if (availablePlayers.length === 0) {
       if (unsoldPlayers.length === 0) {
@@ -737,9 +759,18 @@ export default function AuctionStartPage() {
                 {/* Admin Controls or Bid Buttons */}
                 <div className="bg-card/80 backdrop-blur-sm rounded-lg p-4 border border-border">
                   {isAdmin ? (
-                    <div className="flex flex-col items-center justify-center h-full">
+                    <div className="flex flex-col items-center justify-center h-full space-y-3">
                       <div className="text-muted-foreground text-sm mb-2">관리자 제어</div>
-                      <div className="text-foreground text-xs">입찰 모니터링 중...</div>
+                      {auctionState.isActive ? (
+                        <button
+                          onClick={endAuction}
+                          className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors text-sm font-medium"
+                        >
+                          🏁 경매 종료
+                        </button>
+                      ) : (
+                        <div className="text-foreground text-xs">입찰 모니터링 중...</div>
+                      )}
                     </div>
                   ) : auctionState.isActive ? (
                     <div className="space-y-2">
