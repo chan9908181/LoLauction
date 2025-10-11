@@ -130,6 +130,15 @@ export default function AuctionStartPage() {
               coachName: coachName,
             }),
           )
+          
+          // Request full state sync after joining
+          setTimeout(() => {
+            ws.send(
+              JSON.stringify({
+                type: "request_state_sync",
+              }),
+            )
+          }, 500) // Small delay to ensure join is processed first
         }
       }
 
@@ -213,6 +222,18 @@ export default function AuctionStartPage() {
                 }
                 return newState
               })
+              
+              // Sync rosters and coach details when player is drawn
+              if (data.rosters) {
+                setCoachRosters(data.rosters)
+              }
+              if (data.allCoachesStatus) {
+                const filteredCoachDetails = data.allCoachesStatus.filter((coach: any) => {
+                  const isAdminName = coach.name.toLowerCase().includes("admin")
+                  return !isAdminName
+                })
+                setCoachDetails(filteredCoachDetails)
+              }
               break
             case "bid_placed":
               const isAdminUser = user && (user.userType === "admin" || user.username === "admin")
@@ -500,6 +521,12 @@ export default function AuctionStartPage() {
   }
 
   const drawRandomPlayer = () => {
+    // Check if WebSocket is connected
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      alert("WebSocket 연결이 끊어졌습니다. 페이지를 새로고침해주세요.")
+      return
+    }
+
     if (availablePlayers.length === 0) {
       if (unsoldPlayers.length === 0) {
         alert("🎉 All players have been sold! Auction complete!")
@@ -521,14 +548,13 @@ export default function AuctionStartPage() {
 
     setAvailablePlayers((prev) => prev.filter((p) => p._id !== selectedPlayer._id))
 
-    if (wsRef.current) {
-      wsRef.current.send(
-        JSON.stringify({
-          type: "draw_player",
-          player: selectedPlayer,
-        }),
-      )
-    }
+    // Send draw player message
+    wsRef.current.send(
+      JSON.stringify({
+        type: "draw_player",
+        player: selectedPlayer,
+      }),
+    )
   }
 
   const placeBid = (amount: number) => {
