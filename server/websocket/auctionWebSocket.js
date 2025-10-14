@@ -104,6 +104,9 @@ class AuctionWebSocketServer {
       case 'leave':
         this.handleLeave(ws, data);
         break;
+      case 'request_state_sync':
+        this.handleStateSyncRequest(ws, data);
+        break;
       case 'admin_status_request':
         console.log('Admin requesting fresh status update...');
         await this.broadcastConnectedCoaches();
@@ -121,9 +124,10 @@ class AuctionWebSocketServer {
         this.handleEndAuction(ws, data);
         break;
       default:
+        console.log('❌ Unknown message type received:', data.type, 'Full message:', data);
         ws.send(JSON.stringify({
           type: 'error',
-          message: 'Unknown message type'
+          message: `Unknown message type: ${data.type}`
         }));
     }
   }
@@ -165,6 +169,15 @@ class AuctionWebSocketServer {
     // Check if this is an admin based on data.isAdmin flag or userType
     const isAdminUser = userType === 'admin' || data.isAdmin === true || user.username === 'admin';
     
+    // Check if user is already connected and close old connection
+    const existingConnection = this.connectedCoaches.get(ws.coachId);
+    if (existingConnection && existingConnection.ws !== ws) {
+      console.log(`Closing existing connection for user: ${data.coachName}`);
+      if (existingConnection.ws.readyState === WebSocket.OPEN) {
+        existingConnection.ws.close(1000, 'New connection established');
+      }
+    }
+
     if (isAdminUser) {
       console.log(`ADMIN USER DETECTED: ${data.coachName} - NOT adding to coach list`);
       // Store admin connection but mark as admin
@@ -203,6 +216,115 @@ class AuctionWebSocketServer {
 
     // Broadcast updated coach list (excluding admins)
     this.broadcastConnectedCoaches();
+  }
+
+  async handleStateSyncRequest(ws, data) {
+    console.log('Coach requesting state sync...');
+    
+    try {
+      // Always fetch basic data
+      const rosters = await this.fetchRostersData();
+      const allCoaches = await Coach.find({});
+      const allCoachesStatus = [];
+      
+      for (const coach of allCoaches) {
+        const connectedCoachInfo = this.connectedCoaches.get(coach._id.toString());
+        allCoachesStatus.push({
+          name: coach.name,
+          username: coach.username,
+          points: coach.points,
+          isConnected: !!connectedCoachInfo,
+          connectedAt: connectedCoachInfo ? connectedCoachInfo.joinedAt : null
+        });
+      }
+
+      // Send complete current auction state
+      const syncMessage = {
+        type: 'state_sync',
+        auctionState: this.auctionState,
+        rosters: rosters,
+        allCoachesStatus: allCoachesStatus
+      };
+
+      if (this.auctionState.isActive && this.auctionState.currentPlayer) {
+        console.log(`Sending complete state sync - Active: ${this.auctionState.currentPlayer.name}, Status: ${this.auctionState.status}, Time: ${this.auctionState.timeRemaining}s`);
+      } else {
+        console.log('Sending basic state sync - no active auction');
+      }
+
+      ws.send(JSON.stringify(syncMessage));
+    } catch (error) {
+      console.error('Error handling state sync request:', error);
+      ws.send(JSON.stringify({
+        type: 'error',
+        message: 'Failed to sync state'
+      }));
+    }
+  }
+
+  async fetchRostersData() {
+    try {
+      console.log('Fetching team rosters from database...');
+      
+      // Get all coaches with their points
+      const coaches = await Coach.find({}).select('name username points');
+      console.log(`Found ${coaches.length} coaches`);
+      
+      // Get all players that have been bought (have a buyer)
+      const soldPlayers = await Player.find({ buyer: { $ne: null } }).populate('buyer', 'name username');
+      console.log(`Found ${soldPlayers.length} sold players`);
+      
+      // Build rosters object
+      const rosters = {};
+      
+      // Initialize rosters for all coaches
+      coaches.forEach(coach => {
+        const coachFullName = coach.name;
+        rosters[coachFullName] = {
+          TOP: null,
+          JGL: null,
+          MID: {
+            // Coach is their own MID player
+            _id: coach._id,
+            name: coachFullName,
+            description: `Team captain and mid laner`,
+            tier: 'Coach',
+            position: 'MID',
+            currentPrice: 0,
+            startingPrice: 0
+          },
+          ADC: null,
+          SUPP: null
+        };
+      });
+      
+      // Fill rosters with bought players (excluding MID since coaches are MID)
+      soldPlayers.forEach(player => {
+        if (player.buyer && player.position !== 'MID') {
+          const coachFullName = player.buyer.name;
+          console.log(`Assigning ${player.name} (${player.position}) to ${coachFullName} for $${player.currentPrice}`);
+          
+          if (rosters[coachFullName]) {
+            rosters[coachFullName][player.position] = {
+              _id: player._id,
+              name: player.name,
+              description: player.description,
+              tier: player.tier,
+              position: player.position,
+              currentPrice: player.currentPrice,
+              startingPrice: player.startingPrice
+            };
+          }
+        }
+      });
+      
+      console.log('Final rosters with coaches as MID:', JSON.stringify(rosters, null, 2));
+      return rosters;
+      
+    } catch (error) {
+      console.error('Error fetching rosters data:', error);
+      throw error;
+    }
   }
 
   handleLeave(ws, data) {
@@ -815,14 +937,16 @@ class AuctionWebSocketServer {
 
   broadcastToAll(message) {
     const messageStr = JSON.stringify(message);
-    console.log(`Broadcasting to ${this.connectedCoaches.size} coaches:`, message.type);
+    console.log(`Broadcasting to ${this.connectedCoaches.size} connected users:`, message.type);
     
-    this.connectedCoaches.forEach((coachInfo, ws) => {
-      if (coachInfo.ws.readyState === WebSocket.OPEN) {
-        console.log(`Sending ${message.type} to coach: ${coachInfo.coachName}`);
+    this.connectedCoaches.forEach((coachInfo, coachId) => {
+      if (coachInfo.ws && coachInfo.ws.readyState === WebSocket.OPEN) {
+        console.log(`  ✓ Sending ${message.type} to ${coachInfo.coachName}`);
         coachInfo.ws.send(messageStr);
       } else {
-        console.log(`Skipping coach ${coachInfo.coachName} - connection not open`);
+        console.log(`  ✗ Skipping ${coachInfo.coachName} - connection not open`);
+        // Clean up dead connections
+        this.connectedCoaches.delete(coachId);
       }
     });
   }

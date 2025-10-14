@@ -81,13 +81,29 @@ export default function AuctionStartPage() {
   const [bidNotifications, setBidNotifications] = useState<BidNotification[]>([])
   const [lastBidTime, setLastBidTime] = useState<number>(0)
   const [bidCooldown, setBidCooldown] = useState<boolean>(false)
+  const [customBidAmount, setCustomBidAmount] = useState<string>("")
   const [autoAssignmentNotification, setAutoAssignmentNotification] = useState<string | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Helper function to get API base URL
-  const getApiBaseUrl = () => {
+  const getApiUrl = () => {
     return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+  }
+
+  // Comprehensive state refresh function
+  const refreshCompleteState = async () => {
+    try {
+      await fetchRosters()
+      if (isAdmin) {
+        await fetchPlayers()
+      }
+      if (user) {
+        await refreshUser()
+      }
+    } catch (error) {
+      console.error('Error refreshing complete state:', error)
+    }
   }
 
   useEffect(() => {
@@ -96,6 +112,18 @@ export default function AuctionStartPage() {
       return
     }
   }, [isAuthenticated, loading, router])
+
+  // Add loading timeout to prevent infinite loading
+  useEffect(() => {
+    const loadingTimeout = setTimeout(() => {
+      if (loading) {
+        console.log("⚠️ Loading timeout - forcing completion")
+        // Force loading to complete after 10 seconds
+      }
+    }, 10000)
+
+    return () => clearTimeout(loadingTimeout)
+  }, [loading])
 
   useEffect(() => {
     if (!token || !user) return
@@ -119,11 +147,13 @@ export default function AuctionStartPage() {
       wsRef.current = ws
 
       ws.onopen = () => {
+        console.log("🔗 WebSocket connected successfully")
         setIsConnected(true)
         setConnectionStatus("연결됨")
 
         if (user) {
           const coachName = user.name
+          console.log("📤 Sending join message for coach:", coachName)
           ws.send(
             JSON.stringify({
               type: "join",
@@ -131,20 +161,19 @@ export default function AuctionStartPage() {
             }),
           )
           
-          // Request full state sync after joining
+          // Single state sync request after successful join
           setTimeout(() => {
-            ws.send(
-              JSON.stringify({
-                type: "request_state_sync",
-              }),
-            )
-          }, 500) // Small delay to ensure join is processed first
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "request_state_sync" }))
+            }
+          }, 1000)
         }
       }
 
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
+          console.log("📨 WebSocket message received:", data.type, data)
 
           switch (data.type) {
             case "coaches_update":
@@ -193,6 +222,18 @@ export default function AuctionStartPage() {
 
                 setAuctionStatus(data.auctionState.status)
               }
+              
+              // Sync complete state when joining
+              if (data.rosters) {
+                setCoachRosters(data.rosters)
+              }
+              if (data.allCoachesStatus) {
+                const filteredCoachDetails = data.allCoachesStatus.filter((coach: any) => {
+                  const isAdminName = coach.name.toLowerCase().includes("admin")
+                  return !isAdminName
+                })
+                setCoachDetails(filteredCoachDetails)
+              }
               break
             case "connected":
               if (data.auctionState) {
@@ -208,8 +249,51 @@ export default function AuctionStartPage() {
 
                 setAuctionStatus(data.auctionState.status)
               }
+              
+              // Sync complete state when connected
+              if (data.rosters) {
+                setCoachRosters(data.rosters)
+              }
+              if (data.allCoachesStatus) {
+                const filteredCoachDetails = data.allCoachesStatus.filter((coach: any) => {
+                  const isAdminName = coach.name.toLowerCase().includes("admin")
+                  return !isAdminName
+                })
+                setCoachDetails(filteredCoachDetails)
+              }
+              break
+            case "state_sync":
+              console.log("🔄 Received state sync:", data)
+              if (data.auctionState) {
+                setAuctionState((prev) => ({
+                  ...prev,
+                  status: data.auctionState.isActive ? "bidding" : "waiting",
+                  currentPlayer: data.auctionState.currentPlayer || undefined,
+                  currentBid: data.auctionState.currentBid || 0,
+                  highestBidder: data.auctionState.highestBidder || undefined,
+                  timeRemaining: data.auctionState.timeRemaining || 10,
+                  isActive: data.auctionState.isActive || false,
+                }))
+
+                setAuctionStatus(data.auctionState.status)
+              }
+              
+              // Sync complete state from sync response
+              if (data.rosters) {
+                setCoachRosters(data.rosters)
+              }
+              if (data.allCoachesStatus) {
+                const filteredCoachDetails = data.allCoachesStatus.filter((coach: any) => {
+                  const isAdminName = coach.name.toLowerCase().includes("admin")
+                  return !isAdminName
+                })
+                setCoachDetails(filteredCoachDetails)
+              }
+              break
               break
             case "player_drawn":
+              console.log("🎯 COACH RECEIVED player_drawn message:", data)
+              console.log("🎯 Current auction state before update:", auctionState)
               setAuctionState((prev) => {
                 const newTimeRemaining = data.auctionState?.timeRemaining || 10
                 const newState = {
@@ -220,6 +304,7 @@ export default function AuctionStartPage() {
                   timeRemaining: newTimeRemaining,
                   isActive: true,
                 }
+                console.log("🎯 New auction state after player_drawn:", newState)
                 return newState
               })
               
@@ -357,22 +442,43 @@ export default function AuctionStartPage() {
             case "error":
               alert(data.message)
               break
+            case "state_sync":
+              // Handle full state synchronization
+              if (data.auctionState) {
+                setAuctionState(data.auctionState)
+              }
+              if (data.rosters) {
+                setCoachRosters(data.rosters)
+              }
+              if (data.allCoachesStatus) {
+                const filteredCoachDetails = data.allCoachesStatus.filter((coach: any) => {
+                  const isAdminName = coach.name.toLowerCase().includes("admin")
+                  return !isAdminName
+                })
+                setCoachDetails(filteredCoachDetails)
+              }
+              break
           }
         } catch (error) {
           console.error("Error parsing WebSocket message:", error)
         }
       }
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
+        console.log("🔌 WebSocket connection closed:", event.code, event.reason)
         setIsConnected(false)
         setConnectionStatus("연결 끊김")
 
-        setTimeout(() => {
-          if (wsRef.current?.readyState === WebSocket.CLOSED) {
-            setConnectionStatus("재연결 중...")
-            connectWebSocket()
-          }
-        }, 3000)
+        // Only reconnect if it wasn't a manual close (code 1000)
+        if (event.code !== 1000) {
+          setTimeout(() => {
+            if (wsRef.current?.readyState === WebSocket.CLOSED) {
+              console.log("🔄 Attempting to reconnect...")
+              setConnectionStatus("재연결 중...")
+              connectWebSocket()
+            }
+          }, 3000)
+        }
       }
 
       ws.onerror = (error) => {
@@ -391,7 +497,7 @@ export default function AuctionStartPage() {
 
   const fetchPlayers = async () => {
     try {
-      const response = await fetch(`${getApiBaseUrl()}/api/players`, {
+      const response = await fetch(`${getApiUrl()}/api/players`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -414,7 +520,7 @@ export default function AuctionStartPage() {
   const fetchRosters = async () => {
     try {
       console.log("Fetching rosters from API...")
-      const response = await fetch(`${getApiBaseUrl()}/api/rosters`, {
+      const response = await fetch(`${getApiUrl()}/api/rosters`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -604,20 +710,32 @@ export default function AuctionStartPage() {
     }
   }
 
-  const getBidSuggestions = () => {
+  const getQuickBidOptions = () => {
     const currentBid = auctionState.currentBid
     const userPoints = (user as any)?.points || 0
-    const suggestions = []
+    const options = [
+      { label: "+10", amount: currentBid + 10 },
+      { label: "+50", amount: currentBid + 50 },
+      { label: "+100", amount: currentBid + 100 }
+    ]
 
-    for (let i = 1; i <= 5; i++) {
-      const suggestedBid = currentBid + i * 10
-      if (suggestedBid <= userPoints) {
-        suggestions.push(suggestedBid)
-      }
-    }
-
-    return suggestions
+    // Filter options that are within user's point limit
+    return options.filter(option => option.amount <= userPoints)
   }
+
+  const handleCustomBid = () => {
+    if (!customBidAmount) return;
+    
+    const amount = parseInt(customBidAmount);
+    const userPoints = (user as any)?.points || 0;
+    
+    if (amount > auctionState.currentBid && amount <= userPoints) {
+      placeBid(amount);
+      setCustomBidAmount("");
+    } else {
+      alert(`입찰 금액은 ${auctionState.currentBid + 1}보다 크고 보유 포인트(${userPoints})보다 작아야 합니다.`);
+    }
+  };
 
   const canBidOnCurrentPlayer = () => {
     if (!auctionState.currentPlayer || !user || isAdmin) {
@@ -854,22 +972,54 @@ export default function AuctionStartPage() {
                             <div className="text-muted-foreground text-xs text-center mb-2">
                               {bidCooldown ? "입찰 쿨다운 중..." : "빠른 입찰"}
                             </div>
-                            {getBidSuggestions()
-                              .slice(0, 2)
-                              .map((amount) => (
+                            
+                            {/* Quick Bid Buttons */}
+                            <div className="grid grid-cols-3 gap-1 mb-2">
+                              {getQuickBidOptions().map((option) => (
                                 <button
-                                  key={amount}
-                                  onClick={() => placeBid(amount)}
+                                  key={option.label}
+                                  onClick={() => placeBid(option.amount)}
                                   disabled={bidCooldown}
-                                  className={`w-full py-2 px-4 rounded-lg transition-colors text-sm font-medium ${
+                                  className={`py-1 px-2 rounded text-xs font-medium ${
                                     bidCooldown
                                       ? "bg-gray-400 cursor-not-allowed text-gray-600"
-                                      : "bg-green-600 hover:bg-green-700 text-white"
+                                      : "bg-blue-600 hover:bg-blue-700 text-white"
                                   }`}
                                 >
-                                  {bidCooldown ? "쿨다운 중..." : `$${amount}`}
+                                  {bidCooldown ? "쿨다운" : option.label}
                                 </button>
                               ))}
+                            </div>
+
+                            {/* Custom Bid Input */}
+                            <div className="flex gap-1">
+                              <input
+                                type="number"
+                                value={customBidAmount}
+                                onChange={(e) => setCustomBidAmount(e.target.value)}
+                                placeholder={`${auctionState.currentBid + 1}+`}
+                                min={auctionState.currentBid + 1}
+                                max={(user as any)?.points || 0}
+                                disabled={bidCooldown}
+                                className="flex-1 px-2 py-1 text-xs border rounded focus:outline-none focus:ring-1 focus:ring-blue-500 bg-background text-foreground"
+                              />
+                              <button
+                                onClick={handleCustomBid}
+                                disabled={bidCooldown || !customBidAmount}
+                                className={`px-3 py-1 rounded text-xs font-medium ${
+                                  bidCooldown || !customBidAmount
+                                    ? "bg-gray-400 cursor-not-allowed text-gray-600"
+                                    : "bg-green-600 hover:bg-green-700 text-white"
+                                }`}
+                              >
+                                입찰
+                              </button>
+                            </div>
+
+                            {/* Points Display */}
+                            <div className="text-center text-xs text-muted-foreground">
+                              보유 포인트: {(user as any)?.points || 0}
+                            </div>
                           </>
                         ) : (
                           <div className="flex flex-col items-center justify-center h-full">
