@@ -76,24 +76,26 @@ const playerController = {
       // Accept any tier value without validation
       let normalizedTier = tier.trim();
 
-      // Validate position - support CSV format: Top, Jungle, Mid, ADC, Support
+      // Validate position - support both CSV and abbreviated formats
       const validCSVPositions = ['TOP', 'JUNGLE', 'MID', 'ADC', 'SUPPORT'];
       const validSimplePositions = ['TOP', 'JGL', 'MID', 'ADC', 'SUPP'];
       
       let normalizedPosition = position.toUpperCase();
       
-      // Map CSV position names to simple format for database storage
+      // Map both CSV and abbreviated position names to simple format for database storage
       const positionMap = {
         'TOP': 'TOP',
-        'JUNGLE': 'JGL', 
+        'JUNGLE': 'JGL',
+        'JGL': 'JGL',
         'MID': 'MID',
         'ADC': 'ADC',
-        'SUPPORT': 'SUPP'
+        'SUPPORT': 'SUPP',
+        'SUPP': 'SUPP'
       };
       
-      if (!validCSVPositions.includes(normalizedPosition)) {
+      if (!validCSVPositions.includes(normalizedPosition) && !validSimplePositions.includes(normalizedPosition)) {
         return res.status(400).json({ 
-          message: `Position must be one of: Top, Jungle, Mid, ADC, Support` 
+          message: `Position must be one of: Top, Jungle/JGL, Mid, ADC, Support/SUPP` 
         });
       }
       
@@ -193,23 +195,25 @@ const playerController = {
         // Accept any tier value without validation
         let normalizedTier = tier.trim();
 
-        // Check if position is valid - support CSV format: Top, Jungle, Mid, ADC, Support
+        // Check if position is valid - support both CSV and abbreviated formats
         const validCSVPositions = ['TOP', 'JUNGLE', 'MID', 'ADC', 'SUPPORT'];
         const validSimplePositions = ['TOP', 'JGL', 'MID', 'ADC', 'SUPP'];
         
         let normalizedPosition = position.toUpperCase();
         
-        // Map CSV position names to simple format for database storage
+        // Map both CSV and abbreviated position names to simple format for database storage
         const positionMap = {
           'TOP': 'TOP',
-          'JUNGLE': 'JGL', 
+          'JUNGLE': 'JGL',
+          'JGL': 'JGL',
           'MID': 'MID',
           'ADC': 'ADC',
-          'SUPPORT': 'SUPP'
+          'SUPPORT': 'SUPP',
+          'SUPP': 'SUPP'
         };
         
-        if (!validCSVPositions.includes(normalizedPosition)) {
-          validationErrors.push(`Row ${index + 1}: Position must be one of: Top, Jungle, Mid, ADC, Support`);
+        if (!validCSVPositions.includes(normalizedPosition) && !validSimplePositions.includes(normalizedPosition)) {
+          validationErrors.push(`Row ${index + 1}: Position must be one of: Top, Jungle/JGL, Mid, ADC, Support/SUPP`);
           return;
         }
         

@@ -74,7 +74,7 @@ export default function AuctionStartPage() {
   const [auctionState, setAuctionState] = useState<AuctionState>({
     status: "waiting",
     currentBid: 0,
-    timeRemaining: 10,
+    timeRemaining: 20,
     isActive: false,
   })
   const [coachRosters, setCoachRosters] = useState<{ [coachName: string]: CoachRoster }>({})
@@ -216,7 +216,7 @@ export default function AuctionStartPage() {
                   currentPlayer: data.auctionState.currentPlayer || undefined,
                   currentBid: data.auctionState.currentBid || 0,
                   highestBidder: data.auctionState.highestBidder || undefined,
-                  timeRemaining: data.auctionState.timeRemaining || 10,
+                  timeRemaining: data.auctionState.timeRemaining || 20,
                   isActive: data.auctionState.isActive || false,
                 }))
 
@@ -243,7 +243,7 @@ export default function AuctionStartPage() {
                   currentPlayer: data.auctionState.currentPlayer || undefined,
                   currentBid: data.auctionState.currentBid || 0,
                   highestBidder: data.auctionState.highestBidder || undefined,
-                  timeRemaining: data.auctionState.timeRemaining || 10,
+                  timeRemaining: data.auctionState.timeRemaining || 20,
                   isActive: data.auctionState.isActive || false,
                 }))
 
@@ -271,7 +271,7 @@ export default function AuctionStartPage() {
                   currentPlayer: data.auctionState.currentPlayer || undefined,
                   currentBid: data.auctionState.currentBid || 0,
                   highestBidder: data.auctionState.highestBidder || undefined,
-                  timeRemaining: data.auctionState.timeRemaining || 10,
+                  timeRemaining: data.auctionState.timeRemaining || 20,
                   isActive: data.auctionState.isActive || false,
                 }))
 
@@ -295,7 +295,7 @@ export default function AuctionStartPage() {
               console.log("🎯 COACH RECEIVED player_drawn message:", data)
               console.log("🎯 Current auction state before update:", auctionState)
               setAuctionState((prev) => {
-                const newTimeRemaining = data.auctionState?.timeRemaining || 10
+                const newTimeRemaining = data.auctionState?.timeRemaining || 20
                 const newState = {
                   ...prev,
                   status: "bidding" as const,
@@ -341,7 +341,7 @@ export default function AuctionStartPage() {
                 ...prev,
                 currentBid: data.amount,
                 highestBidder: data.bidder,
-                timeRemaining: data.timeRemaining || 10,
+                timeRemaining: data.timeRemaining || 20,
               }))
               break
             case "player_sold":
@@ -378,7 +378,7 @@ export default function AuctionStartPage() {
                   currentPlayer: undefined,
                   currentBid: 0,
                   highestBidder: undefined,
-                  timeRemaining: 10,
+                  timeRemaining: 20,
                 }))
               }, 3000)
               break

@@ -17,7 +17,7 @@ class AuctionWebSocketServer {
       currentPlayer: null,
       currentBid: 0,
       highestBidder: null,
-      timeRemaining: 10,
+      timeRemaining: 20,
       isActive: false
     };
     this.auctionTimer = null;
@@ -525,7 +525,7 @@ class AuctionWebSocketServer {
       this.auctionState.currentPlayer = player;
       this.auctionState.currentBid = player.startingPrice || 0;
       this.auctionState.highestBidder = null;
-      this.auctionState.timeRemaining = 10;
+      this.auctionState.timeRemaining = 20;
       this.auctionState.isActive = true;
 
       console.log('Auction state after player draw:', {
@@ -658,8 +658,8 @@ class AuctionWebSocketServer {
     this.auctionState.currentBid = amount;
     this.auctionState.highestBidder = bidder;
 
-    // Reset timer to 10 seconds on every bid
-    this.auctionState.timeRemaining = 10;
+    // Reset timer to 20 seconds on every bid
+    this.auctionState.timeRemaining = 20;
 
     // Broadcast bid update to all coaches
     this.broadcastToAll({
