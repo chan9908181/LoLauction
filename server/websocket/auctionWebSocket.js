@@ -21,6 +21,7 @@ class AuctionWebSocketServer {
       isActive: false
     };
     this.auctionTimer = null;
+    this.bidProcessingLock = false; // Add bid processing lock
 
     this.setupWebSocketServer();
   }
@@ -528,6 +529,10 @@ class AuctionWebSocketServer {
       this.auctionState.timeRemaining = 20;
       this.auctionState.isActive = true;
 
+      // Reset bid processing lock for new auction
+      this.bidProcessingLock = false;
+      console.log('Bid processing lock reset for new auction');
+
       console.log('Auction state after player draw:', {
         timeRemaining: this.auctionState.timeRemaining,
         isActive: this.auctionState.isActive,
@@ -577,19 +582,29 @@ class AuctionWebSocketServer {
       return;
     }
 
-    const { amount, playerId, bidder } = data;
-
-    // Validate bid
-    if (amount <= this.auctionState.currentBid) {
-      // ws.send(JSON.stringify({
-      //   type: 'error',
-      //   message: 'Bid must be higher than current bid'
-      // }));
-      return;
+    // Check if bid processing is locked (to prevent simultaneous bids)
+    if (this.bidProcessingLock) {
+      console.log(`Bid from ${data.bidder} ignored - processing lock active`);
+      return; // Silently ignore the bid
     }
 
-    // Check if coach has enough points and validate position
+    // Lock bid processing
+    this.bidProcessingLock = true;
+    console.log(`Bid processing locked for ${data.bidder}'s bid of ${data.amount}`);
+
     try {
+      const { amount, playerId, bidder } = data;
+
+      // Validate bid
+      if (amount <= this.auctionState.currentBid) {
+        // ws.send(JSON.stringify({
+        //   type: 'error',
+        //   message: 'Bid must be higher than current bid'
+        // }));
+        return;
+      }
+
+      // Check if coach has enough points and validate position
       const coach = await Coach.findOne({ username: bidder });
       if (!coach) {
         ws.send(JSON.stringify({
@@ -646,30 +661,34 @@ class AuctionWebSocketServer {
       }
 
       console.log(`Position check passed for ${bidder}: can bid on ${playerPosition}`);
+      console.log(`Bid placed: ${bidder} bids ${amount} for ${this.auctionState.currentPlayer.name}`);
+
+      // Update auction state
+      this.auctionState.currentBid = amount;
+      this.auctionState.highestBidder = bidder;
+
+      // Reset timer to 20 seconds on every bid
+      this.auctionState.timeRemaining = 20;
+
+      // Broadcast bid update to all coaches
+      this.broadcastToAll({
+        type: 'bid_placed',
+        amount: amount,
+        bidder: bidder,
+        playerId: playerId,
+        timeRemaining: this.auctionState.timeRemaining,
+        auctionState: this.auctionState
+      });
 
     } catch (error) {
-      console.error('Error checking coach points and position:', error);
-      return;
+      console.error('Error processing bid:', error);
+    } finally {
+      // Unlock bid processing after a short delay to allow other coaches to bid
+      setTimeout(() => {
+        this.bidProcessingLock = false;
+        console.log('Bid processing unlocked - other coaches can bid again');
+      }, 200); // 500ms delay to prevent rapid-fire simultaneous bids
     }
-
-    console.log(`Bid placed: ${bidder} bids ${amount} for ${this.auctionState.currentPlayer.name}`);
-
-    // Update auction state
-    this.auctionState.currentBid = amount;
-    this.auctionState.highestBidder = bidder;
-
-    // Reset timer to 20 seconds on every bid
-    this.auctionState.timeRemaining = 20;
-
-    // Broadcast bid update to all coaches
-    this.broadcastToAll({
-      type: 'bid_placed',
-      amount: amount,
-      bidder: bidder,
-      playerId: playerId,
-      timeRemaining: this.auctionState.timeRemaining,
-      auctionState: this.auctionState
-    });
   }
 
   async handleEndAuction(ws, data) {
@@ -785,6 +804,9 @@ class AuctionWebSocketServer {
       this.auctionState.highestBidder = null;
       this.auctionState.timeRemaining = 10;
       this.auctionState.isActive = false;
+      // Reset bid processing lock when auction ends
+      this.bidProcessingLock = false;
+      console.log('Bid processing lock reset on auction end');
     }, 3000);
     
     console.log('===== AUCTION END COMPLETE =====');
