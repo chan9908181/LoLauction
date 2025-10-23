@@ -50,8 +50,8 @@ export default function SignUp() {
 
     if (!formData.id.trim()) {
       newErrors.id = 'Coach ID is required'
-    } else if (formData.id.length < 3) {
-      newErrors.id = 'Coach ID must be at least 3 characters'
+    } else if (formData.id.length < 2) {
+      newErrors.id = 'Coach ID must be at least 2 characters'
     }
 
     if (!formData.password) {

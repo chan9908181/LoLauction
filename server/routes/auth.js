@@ -7,7 +7,7 @@ const router = express.Router();
 
 // Validation middleware
 const validateRegister = [
-  body('username').isLength({ min: 3 }).withMessage('Username must be at least 3 characters'),
+  body('username').isLength({ min: 2 }).withMessage('Username must be at least 2 characters'),
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
   body('firstName').notEmpty().withMessage('First name is required'),
   body('lastName').optional()

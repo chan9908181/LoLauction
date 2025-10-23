@@ -581,10 +581,10 @@ class AuctionWebSocketServer {
 
     // Validate bid
     if (amount <= this.auctionState.currentBid) {
-      ws.send(JSON.stringify({
-        type: 'error',
-        message: 'Bid must be higher than current bid'
-      }));
+      // ws.send(JSON.stringify({
+      //   type: 'error',
+      //   message: 'Bid must be higher than current bid'
+      // }));
       return;
     }
 
